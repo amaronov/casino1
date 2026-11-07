@@ -2,6 +2,8 @@
 // «Зелёное сукно» API: registration, login, sessions and all three games.
 // `sql` is a postgres.js-style client: tagged template queries + sql.begin(fn) for transactions.
 import { randomBytes, scrypt as scryptCb, timingSafeEqual, createHash } from 'node:crypto';
+// Explicit import: Supabase's edge runtime has no global Buffer (local Deno does, which hid this).
+import { Buffer } from 'node:buffer';
 import * as G from './games.ts';
 
 const SESSION_DAYS = 30;
