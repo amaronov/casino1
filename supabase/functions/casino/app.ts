@@ -131,6 +131,41 @@ export function createApp({ sql, allowedOrigins = [] }) {
       return fullState(sql, u);
     },
 
+    // Top 50 by the chosen column, plus the viewer's own row (with its place) when it is lower down.
+    // Ties share a place (rank()). Three fixed queries: the sort column is never built from input.
+    'GET /leaderboard': async (req, id) => {
+      const by = new URL(req.url).searchParams.get('by');
+      let rows;
+      if (by === 'net') {
+        rows = await sql`
+          with r as (select id, username, balance, rounds, paid - wagered as net, biggest,
+                            rank() over (order by paid - wagered desc) as place from players),
+               top as (select id from r order by place, id limit 50)
+          select * from r where id in (select id from top) or id = ${id} order by place, id`;
+      } else if (by === 'biggest') {
+        rows = await sql`
+          with r as (select id, username, balance, rounds, paid - wagered as net, biggest,
+                            rank() over (order by biggest desc) as place from players),
+               top as (select id from r order by place, id limit 50)
+          select * from r where id in (select id from top) or id = ${id} order by place, id`;
+      } else {
+        rows = await sql`
+          with r as (select id, username, balance, rounds, paid - wagered as net, biggest,
+                            rank() over (order by balance desc) as place from players),
+               top as (select id from r order by place, id limit 50)
+          select * from r where id in (select id from top) or id = ${id} order by place, id`;
+      }
+      const [{ total }] = await sql`select count(*) as total from players`;
+      return {
+        by: by === 'net' || by === 'biggest' ? by : 'balance',
+        total: n(total),
+        rows: rows.map(r => ({
+          place: n(r.place), name: r.username, balance: n(r.balance), net: n(r.net),
+          biggest: n(r.biggest), rounds: n(r.rounds), me: String(r.id) === String(id),
+        })),
+      };
+    },
+
     'POST /auth/register': async (req, _id, body) => {
       if (await tooManyAttempts(req)) throw new HttpError(429, 'Слишком много попыток. Подождите 10 минут.');
       const username = String(body.username || '').trim();

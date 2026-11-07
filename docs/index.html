@@ -193,6 +193,11 @@ main#tables[inert]{opacity:.45;filter:saturate(.6)}
 .form input{font:16px var(--f-body);padding:12px 14px;border-radius:10px;border:1px solid var(--felt-line);background:rgba(0,0,0,.28);color:var(--ivory)}
 .form input:focus{outline:2px solid var(--brass);outline-offset:0;border-color:transparent}
 .hint{margin:0;font-size:13px;color:var(--muted)}
+.lb tr.me td{background:rgba(212,174,90,.14)}
+.lb tr.me td:nth-child(2){font-weight:800;color:var(--brass)}
+.lb td.top{color:var(--brass);font-weight:700}
+.lb tr.gap td{text-align:center;color:var(--muted);padding:4px}
+.lb td.player{max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .link{font:600 12px var(--f-body);color:var(--brass);background:none;border:0;padding:0;cursor:pointer;text-align:left;text-decoration:underline;text-underline-offset:3px}
 </style>
 </head>
@@ -222,6 +227,7 @@ main#tables[inert]{opacity:.45;filter:saturate(.6)}
     <a href="#slots" data-tab="slots">Слоты</a>
     <a href="#roulette" data-tab="roulette">Рулетка</a>
     <a href="#blackjack" data-tab="blackjack">Блэкджек</a>
+    <a href="#leaders" data-tab="leaders">Лидеры</a>
     <a href="#account" data-tab="account">Мой счёт</a>
   </nav>
 
@@ -364,6 +370,30 @@ main#tables[inert]{opacity:.45;filter:saturate(.6)}
     <div class="msg" id="bj-msg" aria-live="polite"></div>
   </section>
 
+  <!-- LEADERS -->
+  <section class="table" id="v-leaders" data-view="leaders" hidden>
+    <div class="game-head">
+      <h2>Лидеры</h2>
+      <p>Все игроки стола. Итог игры — выплаты минус ставки, без учёта пополнений банка.</p>
+    </div>
+    <div class="row">
+      <div class="seg" id="lb-seg" role="group" aria-label="Сортировка">
+        <button type="button" data-by="balance" aria-pressed="true">Баланс</button>
+        <button type="button" data-by="net" aria-pressed="false">Итог игры</button>
+        <button type="button" data-by="biggest" aria-pressed="false">Лучший выигрыш</button>
+      </div>
+      <button class="btn alt" id="lb-refresh" type="button">Обновить</button>
+      <span class="lbl" id="lb-total" style="margin-left:auto"></span>
+    </div>
+    <p class="empty" id="lb-empty">Загружаем таблицу…</p>
+    <div class="hist-wrap" id="lb-wrap" hidden>
+      <table class="ledger lb">
+        <thead><tr><th class="num">Место</th><th>Игрок</th><th class="num">Баланс</th><th class="num">Итог игры</th><th class="num">Лучший выигрыш</th><th class="num">Раундов</th></tr></thead>
+        <tbody id="lb-body"></tbody>
+      </table>
+    </div>
+  </section>
+
   <!-- ACCOUNT -->
   <section class="table" id="v-account" data-view="account" hidden>
     <div class="game-head">
@@ -449,14 +479,53 @@ function renderBank(flash){
 function applyAccount(a,flash){acct=a;renderBank(flash);renderAccount()}
 
 /* ---------- Routing ---------- */
-const VIEWS=['slots','roulette','blackjack','account'];
+const VIEWS=['slots','roulette','blackjack','leaders','account'];
 function route(){
   const h=location.hash.slice(1);const v=VIEWS.includes(h)?h:'slots';
   $$('[data-view]').forEach(s=>s.hidden=s.dataset.view!==v);
   $$('[data-tab]').forEach(a=>{if(a.dataset.tab===v)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current')});
   if(v==='roulette')sizeWheel();
   if(v==='account')renderAccount();
+  if(v==='leaders')loadLeaders();
 }
+
+/* ---------- Leaderboard ---------- */
+let lbBy='balance',lbLoading=false;
+const signed=v=>(v>0?'+':'')+fmt(v);
+async function loadLeaders(){
+  if(lbLoading)return;lbLoading=true;$('#lb-refresh').disabled=true;
+  try{renderLeaders(await api('/api/leaderboard?by='+lbBy))}
+  catch(e){$('#lb-wrap').hidden=true;$('#lb-empty').hidden=false;$('#lb-empty').textContent=e.message}
+  finally{lbLoading=false;$('#lb-refresh').disabled=false}
+}
+function renderLeaders(d){
+  $('#lb-total').textContent='Игроков: '+fmt(d.total);
+  $('#lb-empty').hidden=d.rows.length>0;$('#lb-wrap').hidden=!d.rows.length;
+  if(!d.rows.length)$('#lb-empty').textContent='Пока никто не играл.';
+  const tb=$('#lb-body');tb.textContent='';
+  d.rows.forEach((r,i)=>{
+    const prev=d.rows[i-1];
+    if(prev&&r.me&&r.place>prev.place+1){
+      const g=document.createElement('tr');g.className='gap';const td=document.createElement('td');td.colSpan=6;td.textContent='…';g.appendChild(td);tb.appendChild(g);
+    }
+    const tr=document.createElement('tr');if(r.me)tr.className='me';
+    const cells=[
+      [String(r.place),'num'+(r.place<=3?' top':'')],
+      [r.name+(r.me?' (вы)':''),'player'],
+      [fmt(r.balance),'num'],
+      [signed(r.net),'num '+(r.net>0?'pos':r.net<0?'neg':'')],
+      [r.biggest>0?'+'+fmt(r.biggest):'—','num'],
+      [fmt(r.rounds),'num'],
+    ];
+    for(const[txt,cls]of cells){const td=document.createElement('td');td.textContent=txt;td.className=cls;tr.appendChild(td)}
+    tb.appendChild(tr);
+  });
+}
+$('#lb-seg').addEventListener('click',e=>{
+  const b=e.target.closest('button');if(!b||b.dataset.by===lbBy)return;
+  lbBy=b.dataset.by;$$('#lb-seg button').forEach(x=>x.setAttribute('aria-pressed',x===b?'true':'false'));loadLeaders();
+});
+$('#lb-refresh').addEventListener('click',loadLeaders);
 
 /* ---------- Auth ---------- */
 let authMode='login',loggedIn=false;
