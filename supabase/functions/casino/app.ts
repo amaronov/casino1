@@ -16,6 +16,12 @@ const n = v => Number(v);
 const nameKey = s => String(s).trim().toLowerCase().replace(/ё/g, 'е');
 const sha256 = s => createHash('sha256').update(s).digest('hex');
 const isAmount = v => Number.isSafeInteger(v) && v > 0 && v <= G.MAX_BET;
+// Blackjack state as stored: an object, or (rows written before the fix) a JSON string inside jsonb.
+function parseBj(raw) {
+  let v = raw;
+  try { while (typeof v === 'string') v = JSON.parse(v); } catch { v = null; }
+  return v && typeof v === 'object' ? { shoe: Array.isArray(v.shoe) ? v.shoe : [], hand: v.hand || null } : { shoe: [], hand: null };
+}
 
 /* ---------- Passwords ---------- */
 const SCRYPT = { N: 16384, r: 8, p: 1 };
@@ -48,7 +54,7 @@ export function createApp({ sql, allowedOrigins = [] }) {
     };
   }
   async function fullState(db, user) {
-    const hand = user.bj_state?.hand;
+    const hand = parseBj(user.bj_state).hand;
     return {
       user: { name: user.username },
       account: await account(db, user.id),
@@ -91,10 +97,12 @@ export function createApp({ sql, allowedOrigins = [] }) {
     const [u] = await tx`select * from players where id = ${id} for update`;
     if (!u) throw new HttpError(401, 'Войдите, чтобы играть.');
     u.balance = n(u.balance);
-    u.bj_state = u.bj_state || { shoe: [], hand: null };
+    u.bj_state = parseBj(u.bj_state);
     return u;
   }
-  const saveBj = (tx, id, st) => tx`update players set bj_state = ${JSON.stringify(st)}::jsonb where id = ${id}`;
+  // Pass the state as text and cast in SQL: postgres.js JSON-encodes a value bound straight to a jsonb
+  // parameter, so a pre-stringified object would be stored as a jsonb *string*.
+  const saveBj = (tx, id, st) => tx`update players set bj_state = ${JSON.stringify(st)}::text::jsonb where id = ${id}`;
   const setBalance = (tx, id, v) => tx`update players set balance = ${v} where id = ${id}`;
 
   async function bjAction(id, fn) {
