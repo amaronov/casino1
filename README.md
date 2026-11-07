@@ -1,120 +1,85 @@
 # Зелёное сукно
 
-Казино на игровые фишки: слоты, европейская рулетка и блэкджек. Есть регистрация по имени и паролю, а баланс и история ставок хранятся на сервере.
+Казино на игровые фишки: слоты, европейская рулетка и блэкджек. Есть регистрация по имени и паролю, а баланс и история ставок хранятся на сервере. Проект целиком работает на бесплатных тарифах.
 
-- **Сервер:** Node.js 24 без npm-зависимостей (`node:http`, `node:sqlite`, `node:crypto`).
-- **База:** один файл SQLite в `DATA_DIR` (по умолчанию `./data/casino.db`).
-- **Игры:** все случайные числа и выплаты считает сервер, браузер только показывает результат.
-- **Вход:** пароли хранятся как scrypt-хэши, сессия держится в cookie `HttpOnly; SameSite=Lax` 30 дней.
+- **Страница:** `docs/` на GitHub Pages.
+- **Сервер:** Supabase Edge Function `casino` (`supabase/functions/casino`). Она отвечает за вход, сессии и все игры, рандом и выплаты считаются только здесь.
+- **База:** PostgreSQL в Supabase (`supabase/migrations`). RLS включён и политик нет, поэтому из браузера к таблицам напрямую не обратиться, работать с ними может только функция.
+- **Вход:** пароли хранятся как scrypt-хэши. Сессия — это случайный токен: у игрока он лежит в `localStorage` и уходит на сервер в заголовке `X-Session-Token`, а в базе хранится только его sha256.
 - **Защита:**
-  - запросы с чужих сайтов (CSRF) отклоняются по заголовку `Origin`, а API принимает только JSON;
-  - не больше 20 попыток входа или регистрации за 10 минут с одного IP;
-  - заголовки CSP и `X-Frame-Options`.
+  - баланс меняется в транзакции с блокировкой строки игрока, поэтому параллельные запросы не могут потратить одни фишки дважды;
+  - CORS пропускает только `https://amaronov.github.io` (и localhost для разработки);
+  - не больше 20 попыток входа за 10 минут с одного IP.
 
 ```
-server.js        HTTP, авторизация, API
-src/games.js     правила и рандом всех игр
-public/index.html  интерфейс
-Dockerfile       образ для Coolify
+docs/index.html                     интерфейс
+docs/config.js                      адрес серверной функции
+supabase/migrations/…_init.sql      таблицы
+supabase/functions/casino/app.ts    API: вход, игры, ставки
+supabase/functions/casino/games.ts  правила игр
+supabase/functions/casino/index.ts  точка входа функции
+archive/                            самая первая версия для claude.ai
 ```
 
-## Локальный запуск
+## Деплой
 
-Нужен Node.js 22.13 или новее. На Node 22.x до 22.13 SQLite включается флагом, он уже прописан в `npm run dev`.
+### 1. Проект Supabase
+
+1. Зарегистрируйтесь на supabase.com (тариф Free).
+2. Нажмите **New project**: имя `casino1`, регион поближе к игрокам (например, Frankfurt), пароль базы сгенерируйте и сохраните.
+3. Запомните **Project ID** (он же ref) из **Project Settings → General**. Это строка вида `abcdefghijklmnopqrst`.
+
+### 2. Таблицы
+
+**SQL Editor → New query**: вставьте содержимое `supabase/migrations/20261108000000_init.sql` и нажмите **Run**.
+
+### 3. Серверная функция
 
 ```bash
-npm run dev
-```
-
-Откройте http://localhost:3000.
-
-## Переменные окружения
-
-| Переменная | По умолчанию | Что делает |
-|---|---|---|
-| `PORT` | `3000` | Порт HTTP-сервера |
-| `DATA_DIR` | `./data` (в Docker — `/app/data`) | Папка с файлом базы |
-| `NODE_ENV` | `production` в Docker | В production cookie ставится с флагом `Secure` |
-| `COOKIE_SECURE` | `true` в production | Поставьте `false`, только если сайт открывается по **http** без сертификата |
-| `TRUST_PROXY` | `true` | Брать IP игрока из `X-Forwarded-For` (Coolify стоит за прокси Traefik) |
-
-## Деплой в Coolify
-
-### 0. Сервер с Coolify
-
-Coolify разворачивает приложения на **вашем** сервере (VPS от 2 ГБ RAM, Ubuntu/Debian). Есть два варианта:
-
-- **Coolify Cloud** (на coolify.io). Панель управления держат они, а вы подключаете свой VPS по SSH: Servers → Add Server.
-- **Свой Coolify** на этом же VPS:
-  ```bash
-  curl -fsSL https://cdn.coollabs.io/coolify/install.sh | sudo bash
-  ```
-  После установки панель доступна по адресу `http://<IP-сервера>:8000`.
-
-### 1. Код на GitHub
-
-```bash
-git init -b main
-git add .
-git commit -m "Зелёное сукно: первая версия"
-```
-
-Создайте пустой репозиторий на GitHub, затем:
-
-```bash
-git remote add origin git@github.com:<вы>/zelenoe-sukno.git
-git push -u origin main
-```
-
-### 2. Ресурс в Coolify
-
-1. **Projects → + Add**: создайте проект, например `casino`, и откройте окружение `production`.
-2. **+ New → Resource** и выберите источник:
-   - **Public Repository**, если репозиторий открытый: вставьте его URL;
-   - **Private Repository (with GitHub App)**, если закрытый: Coolify предложит установить GitHub App с доступом к этому репозиторию.
-3. Выберите сервер, ветку `main`, а в поле **Build Pack** укажите **Dockerfile**.
-
-### 3. Настройки приложения (вкладка General)
-
-- **Ports Exposes:** `3000`.
-- **Domains:** `https://casino.ваш-домен.ru`. Префикс `https://` важен: с ним Coolify сам выпустит сертификат Let's Encrypt.
-  - У регистратора домена добавьте **A-запись** `casino` → IP вашего сервера.
-  - Если домена нет, нажмите **Generate Domain**: получится адрес вида `http://….sslip.io`. Он открывается по http, поэтому добавьте переменную `COOKIE_SECURE=false`, иначе браузер не сохранит cookie и вход не заработает.
-
-### 4. Постоянное хранилище (обязательно)
-
-Без этого шага база удаляется при каждом деплое.
-
-**Persistent Storage → + Add → Volume**:
-- Name: `casino-data`
-- Destination Path: `/app/data`
-
-### 5. Проверка здоровья (по желанию)
-
-**Health Checks:** включите проверку с путём `/healthz` и портом `3000`. В Dockerfile такая проверка тоже есть.
-
-### 6. Деплой
-
-Нажмите **Deploy** и дождитесь в логах сборки строки `Зелёное сукно: http://localhost:3000`. Откройте свой домен, зарегистрируйтесь и сыграйте раунд.
-
-Чтобы каждый `git push` в `main` выкатывался сам, включите **Auto Deploy** в настройках ресурса (с GitHub App он включён по умолчанию).
-
-## Резервные копии
-
-Файлы базы лежат в томе `casino-data`. Чтобы сделать копию, найдите на сервере контейнер и скопируйте из него папку с базой (останавливать его не нужно):
-
-```bash
-docker ps --filter "volume=casino-data"
+brew install supabase/tap/supabase
 ```
 
 ```bash
-docker cp <container>:/app/data ./casino-backup-$(date +%F)
+supabase login
 ```
 
-Копируйте всю папку целиком: при работающей базе рядом с `casino.db` лежат файлы `-wal` и `-shm`, и они тоже нужны.
+Из папки проекта:
 
-## Ограничения
+```bash
+supabase functions deploy casino --project-ref <PROJECT_ID> --no-verify-jwt --use-api
+```
 
-- Фишки игровые, реальных денег и выплат нет.
-- Сервер рассчитан на один экземпляр приложения: SQLite — это файл на одном томе. Не включайте несколько реплик.
-- Восстановления пароля нет, потому что почта при регистрации не спрашивается.
+Флаг `--no-verify-jwt` обязателен: страница входит со своим токеном, а не с ключом Supabase.
+
+Если страница будет жить не на `amaronov.github.io`, укажите её адрес:
+
+```bash
+supabase secrets set ALLOWED_ORIGINS=https://ваш-адрес --project-ref <PROJECT_ID>
+```
+
+### 4. Страница
+
+1. В `docs/config.js` замените `PROJECT_REF` на свой Project ID, затем сделайте коммит и `git push`.
+2. На GitHub откройте **Settings → Pages**, выберите **Deploy from a branch**, ветку `main` и папку `/docs`.
+
+Через минуту сайт откроется по адресу `https://amaronov.github.io/casino1/`.
+
+## Локальная разработка
+
+Нужен Docker и Supabase CLI:
+
+```bash
+supabase start
+```
+
+```bash
+supabase functions serve casino --no-verify-jwt
+```
+
+В `docs/config.js` укажите `http://127.0.0.1:54321/functions/v1/casino` и откройте `docs/` через любой статический сервер, например `python3 -m http.server -d docs`.
+
+## Ограничения бесплатного тарифа
+
+- Проект Supabase на Free **засыпает после 7 дней без запросов**. Разбудить его можно кнопкой **Restore** в панели Supabase, данные при этом сохраняются.
+- Лимиты Free: 500 МБ базы и 500 000 вызовов функции в месяц. Для игры с друзьями этого с запасом хватит.
+- Фишки игровые, реальных денег и выплат нет. Восстановления пароля нет.

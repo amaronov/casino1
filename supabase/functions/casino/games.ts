@@ -1,4 +1,4 @@
-// Game rules. Everything random happens here, on the server, with crypto.randomInt.
+// @ts-nocheck — plain JS, shared rules for all games. Randomness: node:crypto randomInt.
 import { randomInt } from 'node:crypto';
 
 export const START_BALANCE = 1000;

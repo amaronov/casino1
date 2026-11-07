@@ -1,7 +1,0 @@
-.git
-data
-node_modules
-*.db
-*.db-*
-README.md
-archive

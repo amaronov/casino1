@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Зелёное сукно</title>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src https://*.supabase.co http://localhost:* http://127.0.0.1:*; base-uri 'none'; form-action 'self'">
+<meta name="referrer" content="same-origin">
+<script src="config.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Yeseva+One&family=Manrope:wght@400;600;800&family=JetBrains+Mono:wght@500;700&display=swap">
@@ -408,12 +411,20 @@ const RM=matchMedia('(prefers-reduced-motion: reduce)').matches;
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 
 /* ---------- API ---------- */
+const API=String(window.CASINO_API||'').replace(/\/+$/,'');
+const TOKEN_KEY='zs-session';
+let memToken=null;
+function getToken(){try{return localStorage.getItem(TOKEN_KEY)}catch(e){return memToken}}
+function setToken(t){memToken=t;try{t?localStorage.setItem(TOKEN_KEY,t):localStorage.removeItem(TOKEN_KEY)}catch(e){}}
 async function api(path,body){
-  const opts={method:body===undefined?'GET':'POST',credentials:'same-origin',headers:{}};
+  if(!API||API.includes('PROJECT_REF')){const e=new Error('Сервер не настроен: укажите адрес функции Supabase в docs/config.js.');e.status=0;throw e}
+  const opts={method:body===undefined?'GET':'POST',headers:{}};
   if(body!==undefined){opts.headers['Content-Type']='application/json';opts.body=JSON.stringify(body)}
+  const token=getToken();if(token)opts.headers['X-Session-Token']=token;
   let res;
-  try{res=await fetch(path,opts)}catch(e){throw new Error('Нет связи с сервером. Проверьте интернет и попробуйте ещё раз.')}
+  try{res=await fetch(API+path.replace(/^\/api/,''),opts)}catch(e){throw new Error('Нет связи с сервером. Проверьте интернет и попробуйте ещё раз.')}
   let data=null;try{data=await res.json()}catch(e){}
+  if(res.status===401&&path!=='/api/auth/login')setToken(null);
   if(res.status===401&&path!=='/api/me'&&!path.startsWith('/api/auth/')){showAuth('Сессия закончилась. Войдите снова.');throw new Error('Войдите снова.')}
   if(!res.ok){const err=new Error((data&&data.error)||'Сервер не ответил. Попробуйте ещё раз.');err.status=res.status;throw err}
   return data;
@@ -463,7 +474,7 @@ $('#auth-form').addEventListener('submit',async e=>{
   if(username.length<3){say('#auth-msg','Введите имя игрока, минимум 3 символа.','lose');return}
   if(password.length<8){say('#auth-msg','Пароль должен быть не короче 8 символов.','lose');return}
   const btn=$('#auth-submit');btn.disabled=true;say('#auth-msg',authMode==='login'?'Проверяем…':'Открываем счёт…');
-  try{const d=await api('/api/auth/'+authMode,{username,password});$('#auth-pass').value='';onLogin(d)}
+  try{const d=await api('/api/auth/'+authMode,{username,password});$('#auth-pass').value='';setToken(d.token);onLogin(d)}
   catch(err){say('#auth-msg',err.message,'lose')}
   finally{btn.disabled=false}
 });
@@ -486,7 +497,7 @@ function onLogin(d){
 $('#logout').addEventListener('click',async()=>{
   if(busy())return;
   try{await api('/api/auth/logout',{})}catch(e){}
-  showAuth();
+  setToken(null);showAuth();
 });
 
 /* ---------- Slots ---------- */
@@ -772,7 +783,9 @@ $('#reset-yes').addEventListener('click',async()=>{
 
 /* ---------- Boot ---------- */
 window.addEventListener('hashchange',route);
-api('/api/me').then(onLogin).catch(e=>showAuth(e.status===401?'':e.message));
+if(getToken())api('/api/me').then(onLogin).catch(e=>showAuth(e.status===401?'':e.message));
+else if(!API||API.includes('PROJECT_REF'))showAuth('Сервер не настроен: укажите адрес функции Supabase в docs/config.js.');
+else showAuth();
 })();
 </script>
 </body>

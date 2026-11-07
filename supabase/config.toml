@@ -1,0 +1,6 @@
+project_id = "casino1"
+
+[functions.casino]
+# The page authenticates with its own session token (x-session-token header),
+# not with a Supabase JWT, so the gateway must not require one.
+verify_jwt = false
