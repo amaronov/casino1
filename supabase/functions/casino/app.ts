@@ -20,7 +20,9 @@ const isAmount = v => Number.isSafeInteger(v) && v > 0 && v <= G.MAX_BET;
 function parseBj(raw) {
   let v = raw;
   try { while (typeof v === 'string') v = JSON.parse(v); } catch { v = null; }
-  return v && typeof v === 'object' ? { shoe: Array.isArray(v.shoe) ? v.shoe : [], hand: v.hand || null } : { shoe: [], hand: null };
+  return v && typeof v === 'object'
+    ? { shoe: Array.isArray(v.shoe) ? v.shoe : [], hand: G.bjNormalize(v.hand) }
+    : { shoe: [], hand: null };
 }
 
 /* ---------- Passwords ---------- */
@@ -105,22 +107,25 @@ export function createApp({ sql, allowedOrigins = [] }) {
   const saveBj = (tx, id, st) => tx`update players set bj_state = ${JSON.stringify(st)}::text::jsonb where id = ${id}`;
   const setBalance = (tx, id, v) => tx`update players set balance = ${v} where id = ${id}`;
 
+  // One transaction per move: take `charge` from the bank, pay out and log the round if it ended.
+  async function bjMove(tx, id, u, st, step) {
+    const { charge, done } = step;
+    let balance = u.balance - charge;
+    if (balance < 0) throw bad('Не хватает фишек.');
+    if (done) {
+      balance += done.back;
+      await recordRound(tx, id, 'blackjack', done.bet, done.back, done.detail);
+    }
+    await setBalance(tx, id, balance);
+    await saveBj(tx, id, st);
+    return { bj: G.bjPublic(st.hand), account: await account(tx, id) };
+  }
   async function bjAction(id, fn) {
     return sql.begin(async tx => {
       const u = await lockPlayer(tx, id);
       const st = u.bj_state;
       if (!st.hand || st.hand.phase !== 'play') throw new HttpError(409, 'Нет активной раздачи.');
-      let balance = u.balance;
-      const done = fn(st, u);
-      if (done && typeof done.charge === 'number') balance -= done.charge;
-      const result = done && done.result !== undefined ? done.result : done;
-      if (result) {
-        balance += result.back;
-        await recordRound(tx, id, 'blackjack', st.hand.bet, result.back, result.detail);
-      }
-      await setBalance(tx, id, balance);
-      await saveBj(tx, id, st);
-      return { bj: G.bjPublic(st.hand), account: await account(tx, id) };
+      return bjMove(tx, id, u, st, fn(st, u));
     });
   }
 
@@ -238,21 +243,20 @@ export function createApp({ sql, allowedOrigins = [] }) {
       const bet = body.bet;
       if (!isAmount(bet)) throw bad('Добавьте фишки к ставке.');
       if (bet > u.balance) throw bad('Ставка больше банка.');
-      const done = G.bjDeal(st, bet);
-      let balance = u.balance - bet;
-      if (done) { balance += done.back; await recordRound(tx, id, 'blackjack', st.hand.bet, done.back, done.detail); }
-      await setBalance(tx, id, balance);
-      await saveBj(tx, id, st);
-      return { bj: G.bjPublic(st.hand), account: await account(tx, id) };
+      return bjMove(tx, id, u, st, G.bjDeal(st, bet));
     }),
 
     'POST /blackjack/hit': (req, id) => bjAction(id, st => G.bjHit(st)),
     'POST /blackjack/stand': (req, id) => bjAction(id, st => G.bjStand(st)),
     'POST /blackjack/double': (req, id) => bjAction(id, (st, u) => {
-      if (st.hand.p.length !== 2) throw bad('Удвоить можно только на первых двух картах.');
-      if (u.balance < st.hand.bet) throw bad('Не хватает фишек, чтобы удвоить.');
-      const charge = st.hand.bet;
-      return { charge, result: G.bjDouble(st) };
+      if (!G.canDouble(st.hand)) throw bad('Удвоить можно только на первых двух картах руки.');
+      if (u.balance < st.hand.hands[st.hand.active].bet) throw bad('Не хватает фишек, чтобы удвоить.');
+      return G.bjDouble(st);
+    }),
+    'POST /blackjack/split': (req, id) => bjAction(id, (st, u) => {
+      if (!G.canSplit(st.hand)) throw bad('Разделить можно только две карты одного достоинства, не больше четырёх рук.');
+      if (u.balance < st.hand.hands[st.hand.active].bet) throw bad('Не хватает фишек, чтобы разделить.');
+      return G.bjSplit(st);
     }),
 
     'POST /refill': (req, id) => sql.begin(async tx => {

@@ -193,6 +193,25 @@ main#tables[inert]{opacity:.45;filter:saturate(.6)}
 .form input{font:16px var(--f-body);padding:12px 14px;border-radius:10px;border:1px solid var(--felt-line);background:rgba(0,0,0,.28);color:var(--ivory)}
 .form input:focus{outline:2px solid var(--brass);outline-offset:0;border-color:transparent}
 .hint{margin:0;font-size:13px;color:var(--muted)}
+.phands{display:flex;flex-wrap:wrap;gap:12px;min-height:96px}
+.phands.split .phand{padding:8px 10px 10px;border:1px solid var(--felt-line);border-radius:12px;background:rgba(0,0,0,.12)}
+.phands.split .phand.active{border-color:var(--brass);background:rgba(212,174,90,.10);box-shadow:0 0 0 1px var(--brass)}
+.phand{display:flex;flex-direction:column;gap:6px;min-width:0}
+.phand-head{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline;font-size:12px;color:var(--muted)}
+.phand-head:empty{display:none}
+.phand-head b{font:700 15px var(--f-num);color:var(--brass)}
+.phand-head .res{font-weight:800;text-transform:uppercase;letter-spacing:.06em}
+.phand-head .res.pos{color:var(--brass)} .phand-head .res.neg{color:#e0646b}
+.rules{border:1px solid var(--felt-line);border-radius:12px;background:rgba(0,0,0,.15)}
+.rules summary{cursor:pointer;padding:12px 16px;font-weight:700;color:var(--brass);list-style:none}
+.rules summary::-webkit-details-marker{display:none}
+.rules summary::before{content:"▸";display:inline-block;width:1.2em}
+.rules[open] summary::before{content:"▾"}
+.rules-body{padding:0 18px 16px;display:grid;gap:8px;max-width:72ch;line-height:1.5}
+.rules-body h3{margin:8px 0 0;font:700 11px var(--f-body);letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.rules-body p,.rules-body ul{margin:0}
+.rules-body ul{padding-left:18px;display:grid;gap:5px}
+.rules-body b{color:var(--ivory)}
 .lb tr.me td{background:rgba(212,174,90,.14)}
 .lb tr.me td:nth-child(2){font-weight:800;color:var(--brass)}
 .lb td.top{color:var(--brass);font-weight:700}
@@ -334,8 +353,39 @@ main#tables[inert]{opacity:.45;filter:saturate(.6)}
   <section class="table" id="v-blackjack" data-view="blackjack" hidden>
     <div class="game-head">
       <h2>Блэкджек</h2>
-      <p>Шесть колод. Дилер добирает до 17 и стоит на мягких 17. Блэкджек платит 3 к 2, удвоение на первых двух картах.</p>
+      <p>Шесть колод, блэкджек платит 3 к 2. Можно удваивать и делить пары — до четырёх рук.</p>
     </div>
+    <details class="rules" id="bj-rules">
+      <summary>Правила блэкджека</summary>
+      <div class="rules-body">
+        <p>Нужно набрать больше очков, чем дилер, но не больше 21. Перебор — больше 21 — сразу проигрывает.</p>
+        <h3>Очки</h3>
+        <ul>
+          <li>Карты от 2 до 10 — по номиналу, валет, дама и король — по 10.</li>
+          <li>Туз — 11 или 1, как выгоднее руке. Рука, где туз считается за 11, называется мягкой: «17 мягкие» — это, например, туз и шестёрка.</li>
+        </ul>
+        <h3>Раздача</h3>
+        <ul>
+          <li>Вы и дилер получаете по две карты. У дилера одна карта открыта, вторая закрыта.</li>
+          <li>Блэкджек — туз и карта в 10 очков первыми двумя картами. Платится 3 к 2. Если блэкджек и у дилера — ничья.</li>
+          <li>Если у дилера блэкджек, раунд заканчивается сразу, и вы теряете только исходную ставку.</li>
+        </ul>
+        <h3>Ваши ходы</h3>
+        <ul>
+          <li><b>Ещё карту</b> — взять карту. Можно брать, пока не наберёте 21 или не переберёте.</li>
+          <li><b>Хватит</b> — остановиться на текущей сумме.</li>
+          <li><b>Удвоить</b> — на первых двух картах руки, в том числе после сплита: ставка удваивается, вы получаете ровно одну карту, и ход руки заканчивается.</li>
+          <li><b>Разделить</b> (сплит) — если первые две карты одного достоинства. Любые две карты по 10 очков тоже считаются парой: король с валетом можно разделить. Каждая карта становится отдельной рукой и получает вторую карту. Новая рука играет на такую же ставку, она списывается из банка. Делить можно до четырёх рук.</li>
+          <li>Разделённые тузы получают по одной карте, больше не делятся и не добирают. 21 после сплита — обычные 21, не блэкджек, платится 1 к 1.</li>
+        </ul>
+        <h3>Дилер и выплаты</h3>
+        <ul>
+          <li>Когда все ваши руки сыграны, дилер открывает карту и добирает, пока у него меньше 17. На любых 17, включая мягкие, он останавливается.</li>
+          <li>Каждая рука сравнивается с дилером отдельно. Выигрыш — 1 к 1, ничья — ставка возвращается, блэкджек — 3 к 2.</li>
+          <li>Колоды перемешиваются, когда в башмаке остаётся меньше 60 карт.</li>
+        </ul>
+      </div>
+    </details>
     <div class="bj-felt">
       <div>
         <div class="hand-head"><span class="lbl">Дилер</span><span class="total" id="bj-dt"></span></div>
@@ -343,7 +393,7 @@ main#tables[inert]{opacity:.45;filter:saturate(.6)}
       </div>
       <div>
         <div class="hand-head"><span class="lbl">Вы</span><span class="total" id="bj-pt"></span></div>
-        <div class="hand" id="bj-player"></div>
+        <div class="phands" id="bj-player"></div>
       </div>
     </div>
     <div class="row">
@@ -363,6 +413,7 @@ main#tables[inert]{opacity:.45;filter:saturate(.6)}
       <button class="btn" id="bj-hit" type="button">Ещё карту</button>
       <button class="btn alt" id="bj-stand" type="button">Хватит</button>
       <button class="btn alt" id="bj-double" type="button">Удвоить</button>
+      <button class="btn alt" id="bj-split" type="button">Разделить</button>
     </div>
     <div class="row" id="bj-done" hidden>
       <button class="btn" id="bj-next" type="button">Новая раздача</button>
@@ -724,7 +775,7 @@ function handVal(h){let t=0,a=0;for(const c of h){if(c===null)continue;const r=r
   if(r==='A'){t+=11;a++}else if(r==='J'||r==='Q'||r==='K'||r==='10')t+=10;else t+=+r}
   while(t>21&&a){t-=10;a--}return{t,soft:a>0}}
 function cardEl(c){
-  const d=document.createElement('div');
+  const d=document.createElement('div');d.dataset.c=c===null?'back':c;
   if(c===null){d.className='card back';d.setAttribute('aria-label','Закрытая карта');return d}
   const s=suitOf(c),r=rankOf(c);
   d.className='card'+(s==='♥'||s==='♦'?' red':'');d.setAttribute('aria-label',r+s);
@@ -733,46 +784,86 @@ function cardEl(c){
   const cs=document.createElement('span');cs.className='cs';cs.textContent=s;
   d.append(cr,cs);return d;
 }
+// Keep cards already on the table; add new ones, and swap any whose value changed (hole card, split).
 function syncHand(el,cards){
   if(el.querySelector('.empty')||el.children.length>cards.length)el.innerHTML='';
-  cards.forEach((c,i)=>{const cur=el.children[i];
+  cards.forEach((c,i)=>{const cur=el.children[i],key=c===null?'back':c;
     if(!cur)el.appendChild(cardEl(c));
-    else if(cur.classList.contains('back')&&c!==null)el.replaceChild(cardEl(c),cur);
+    else if(cur.dataset.c!==key)el.replaceChild(cardEl(c),cur);
+  });
+}
+const RES={bust:'перебор',push_bj:'ничья',bj:'блэкджек',dealer_bj:'у дилера блэкджек',dealer_bust:'дилер перебрал',win:'выигрыш',push:'ничья',lose:'проигрыш'};
+const curHand=v=>v&&v.hands?v.hands[v.active]:null;
+const totalBet=v=>v.hands.reduce((a,h)=>a+h.bet,0);
+const softLabel=val=>val.t+(val.soft&&val.t<21?' мягкие':'');
+function renderPlayer(v,fresh){
+  const box=$('#bj-player');
+  if(!v){box.className='phands';box.innerHTML='<span class="empty">Соберите ставку фишками и нажмите «Раздать».</span>';return}
+  if(fresh||box.querySelector('.empty'))box.innerHTML='';
+  box.className='phands'+(v.split?' split':'');
+  while(box.children.length>v.hands.length)box.lastChild.remove();
+  v.hands.forEach((h,i)=>{
+    let el=box.children[i];
+    if(!el){el=document.createElement('div');el.className='phand';
+      const head=document.createElement('div');head.className='phand-head';
+      const cards=document.createElement('div');cards.className='hand';
+      el.append(head,cards);box.appendChild(el)}
+    syncHand(el.lastChild,h.cards);
+    el.classList.toggle('active',v.phase==='play'&&v.split&&i===v.active);
+    const head=el.firstChild;head.textContent='';
+    if(v.split){
+      const name=document.createElement('span');name.textContent='Рука '+(i+1);
+      const val=document.createElement('b');val.textContent=softLabel(handVal(h.cards));
+      const bet=document.createElement('span');bet.textContent='ставка '+fmt(h.bet)+(h.doubled?' (удвоена)':'');
+      head.append(name,val,bet);
+      if(h.result){const r=document.createElement('span');r.className='res '+(h.result.back>h.bet?'pos':h.result.back<h.bet?'neg':'');
+        r.textContent=RES[h.result.code];head.appendChild(r)}
+    }
   });
 }
 function renderBJ(fresh){
   const v=bjView,phase=v?v.phase:'bet';
-  if(fresh){$('#bj-dealer').innerHTML='';$('#bj-player').innerHTML=''}
-  syncHand($('#bj-dealer'),v?v.d:[]);syncHand($('#bj-player'),v?v.p:[]);
-  if(!v)$('#bj-player').innerHTML='<span class="empty">Соберите ставку фишками и нажмите «Раздать».</span>';
-  const pv=v?handVal(v.p):null,dv=v?handVal(v.d):null,hidden=v&&v.d.includes(null);
-  $('#bj-pt').textContent=v?pv.t+(pv.soft&&pv.t<21?' мягкие':''):'';
+  if(fresh)$('#bj-dealer').innerHTML='';
+  syncHand($('#bj-dealer'),v?v.d:[]);
+  renderPlayer(v,fresh);
+  const dv=v?handVal(v.d):null,hidden=v&&v.d.includes(null);
+  $('#bj-pt').textContent=v&&!v.split?softLabel(handVal(v.hands[0].cards)):'';
   $('#bj-dt').textContent=v?dv.t+(hidden?' + ?':''):'';
-  $('#bj-bet').textContent=fmt(v?v.bet:bjBet);
+  $('#bj-bet').textContent=fmt(v?totalBet(v):bjBet);
   $('#bj-betting').hidden=phase!=='bet';$('#bj-acting').hidden=phase!=='play';$('#bj-done').hidden=phase!=='done';
+  const h=curHand(v),canPay=!!h&&acct.balance>=h.bet,live=!!v&&v.phase==='play';
   ['#bj-hit','#bj-stand','#bj-deal'].forEach(s=>$(s).disabled=bjBusy);
-  $('#bj-double').disabled=bjBusy||!(v&&v.phase==='play'&&v.p.length===2&&acct.balance>=v.bet);
+  $('#bj-double').disabled=bjBusy||!(live&&v.canDouble&&canPay);
+  $('#bj-split').disabled=bjBusy||!(live&&v.canSplit&&canPay);
+  $('#bj-split').hidden=!(live&&v.canSplit);
   renderBank();
 }
 function bjText(v){
-  const pv=handVal(v.p).t,dv=handVal(v.d).t,{code,back}=v.result;
-  switch(code){
-    case 'bust':return['Перебор: '+pv+'. Ставка уходит дилеру.','lose'];
-    case 'push_bj':return['Блэкджек у обоих — ничья, ставка возвращена.',''];
-    case 'bj':return['Блэкджек! Выплата 3 к 2: '+fmt(back)+'.','win'];
-    case 'dealer_bj':return['У дилера блэкджек.','lose'];
-    case 'dealer_bust':return['Дилер перебрал ('+dv+'). Вы выиграли '+fmt(v.bet)+'.','win'];
-    case 'win':return[pv+' против '+dv+'. Вы выиграли '+fmt(v.bet)+'.','win'];
-    case 'push':return['Ничья, '+pv+' на '+dv+'. Ставка возвращена.',''];
-    default:return[pv+' против '+dv+'. Победа дилера.','lose'];
+  const dv=handVal(v.d).t,bet=totalBet(v),back=v.result.back;
+  if(!v.split){
+    const h=v.hands[0],pv=handVal(h.cards).t;
+    switch(h.result.code){
+      case 'bust':return['Перебор: '+pv+'. Ставка уходит дилеру.','lose'];
+      case 'push_bj':return['Блэкджек у обоих — ничья, ставка возвращена.',''];
+      case 'bj':return['Блэкджек! Выплата 3 к 2: '+fmt(back)+'.','win'];
+      case 'dealer_bj':return['У дилера блэкджек.','lose'];
+      case 'dealer_bust':return['Дилер перебрал ('+dv+'). Вы выиграли '+fmt(h.bet)+'.','win'];
+      case 'win':return[pv+' против '+dv+'. Вы выиграли '+fmt(h.bet)+'.','win'];
+      case 'push':return['Ничья, '+pv+' на '+dv+'. Ставка возвращена.',''];
+      default:return[pv+' против '+dv+'. Победа дилера.','lose'];
+    }
   }
+  const parts=v.hands.map((h,i)=>'рука '+(i+1)+' — '+RES[h.result.code]).join(', ');
+  const net=back-bet;
+  return['У дилера '+(dv>21?'перебор ('+dv+')':dv)+': '+parts+'. Итог '+(net>0?'+'+fmt(net):net<0?'−'+fmt(-net):'0')+'.',net>0?'win':net<0?'lose':''];
 }
+function turnText(v){return v.split?'Рука '+(v.active+1)+' из '+v.hands.length+'. Ваш ход.':'Ваш ход.'}
 async function showBj(r,fresh){
   const v=r.bj;
-  if(v.phase!=='done'){bjView=v;applyAccount(r.account);renderBJ(fresh);say('#bj-msg','Ваш ход.');return}
+  if(v.phase!=='done'){bjView=v;applyAccount(r.account);renderBJ(fresh);say('#bj-msg',turnText(v));return}
   // Reveal the dealer's cards one at a time before paying out.
   const k0=fresh?Math.min(2,v.d.length):Math.min(Math.max(2,$('#bj-dealer').children.length),v.d.length);
-  bjView={...v,phase:'reveal',d:v.d.slice(0,k0)};renderBJ(fresh);
+  bjView={...v,phase:'reveal',d:v.d.slice(0,k0),hands:v.hands.map(h=>({...h,result:null}))};renderBJ(fresh);
   if(v.d.length>2||!fresh)say('#bj-msg','Дилер открывает карты…');
   for(let k=k0;k<v.d.length;k++){await sleep(RM?50:650);bjView={...bjView,d:v.d.slice(0,k+1)};renderBJ()}
   bjView=v;const[text,kind]=bjText(v);
@@ -799,8 +890,9 @@ async function bjAct(action){
   if(bjBusy||!bjView||bjView.phase!=='play')return;
   bjBusy=true;renderBJ();
   try{
-    const before=bjView.bet,r=await api('/api/blackjack/'+action,{});
-    if(action==='double')acct={...acct,balance:acct.balance-before};
+    const h=curHand(bjView),charge=action==='double'||action==='split'?h.bet:0;
+    const r=await api('/api/blackjack/'+action,{});
+    acct={...acct,balance:acct.balance-charge};
     bjBusy=false;await showBj(r,false);
   }catch(e){say('#bj-msg',e.message,'lose')}
   finally{bjBusy=false;renderBJ()}
@@ -808,6 +900,7 @@ async function bjAct(action){
 $('#bj-hit').addEventListener('click',()=>bjAct('hit'));
 $('#bj-stand').addEventListener('click',()=>bjAct('stand'));
 $('#bj-double').addEventListener('click',()=>bjAct('double'));
+$('#bj-split').addEventListener('click',()=>bjAct('split'));
 $('#bj-next').addEventListener('click',()=>{
   bjView=null;bjBet=bjBase<=available()?bjBase:0;say('#bj-msg','');renderBJ(true);
 });

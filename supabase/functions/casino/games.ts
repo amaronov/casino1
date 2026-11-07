@@ -54,9 +54,14 @@ export function roulettePayout(key, n, amt) {
   return 0;
 }
 
-/* ---------- Blackjack: 6 decks, dealer stands on soft 17, BJ pays 3:2 ---------- */
+/* ---------- Blackjack ----------
+   6 decks, reshuffled below 60 cards. Dealer peeks for blackjack, draws to 17, stands on soft 17.
+   Blackjack pays 3:2. Double on any first two cards, including after a split.
+   Split any two cards of equal value (10/J/Q/K pair with each other), up to 4 hands;
+   split aces get one card each and cannot be split again. 21 after a split is not a blackjack. */
 const SUITS = ['♠', '♥', '♦', '♣'];
 const RANKS = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
+export const MAX_HANDS = 4;
 
 function newShoe() {
   const shoe = [];
@@ -69,71 +74,125 @@ function draw(st) {
   return st.shoe.pop();
 }
 const rankOf = c => c.slice(0, -1);
+const cardValue = c => { const r = rankOf(c); return r === 'A' ? 11 : r === 'J' || r === 'Q' || r === 'K' || r === '10' ? 10 : Number(r); };
 export function handVal(h) {
   let t = 0, a = 0;
-  for (const c of h) {
-    const r = rankOf(c);
-    if (r === 'A') { t += 11; a++; }
-    else if (r === 'J' || r === 'Q' || r === 'K' || r === '10') t += 10;
-    else t += Number(r);
-  }
+  for (const c of h) { const v = cardValue(c); t += v; if (v === 11) a++; }
   while (t > 21 && a) { t -= 10; a--; }
   return t;
 }
 const isBJ = h => h.length === 2 && handVal(h) === 21;
 
-/** st = {shoe, hand}; hand = {phase:'play'|'done', bet, p, d, result?} */
+/** Hands saved before splits existed ({p, bet}) become the multi-hand shape. */
+export function bjNormalize(h) {
+  if (h && !Array.isArray(h.hands) && Array.isArray(h.p)) {
+    return { phase: h.phase, d: h.d, hands: [{ cards: h.p, bet: h.bet, done: false }], active: 0, split: false, result: null };
+  }
+  return h || null;
+}
+const cur = h => h.hands[h.active];
+
+export function canDouble(h) {
+  const x = h && h.phase === 'play' ? cur(h) : null;
+  return !!x && !x.done && x.cards.length === 2 && !x.splitAces;
+}
+export function canSplit(h) {
+  const x = h && h.phase === 'play' ? cur(h) : null;
+  return !!x && !x.done && x.cards.length === 2 && !x.splitAces && h.hands.length < MAX_HANDS
+    && cardValue(x.cards[0]) === cardValue(x.cards[1]);
+}
+
+/* Every action returns {charge, done}: chips to take from the bank now, and the settlement when the round ended. */
 export function bjDeal(st, bet) {
-  const h = { phase: 'play', bet, p: [], d: [] };
-  h.p.push(draw(st)); h.d.push(draw(st)); h.p.push(draw(st)); h.d.push(draw(st));
+  const h = { phase: 'play', d: [], hands: [{ cards: [], bet, done: false }], active: 0, split: false };
+  const p = h.hands[0].cards;
+  p.push(draw(st)); h.d.push(draw(st)); p.push(draw(st)); h.d.push(draw(st));
   st.hand = h;
-  if (isBJ(h.p) || isBJ(h.d)) return settle(h);
-  if (handVal(h.p) === 21) return bjStand(st);
-  return null;
+  if (isBJ(p) || isBJ(h.d)) return { charge: bet, done: finish(st) };
+  return { charge: bet, done: advance(st) };
 }
 export function bjHit(st) {
-  const h = st.hand;
-  h.p.push(draw(st));
-  const t = handVal(h.p);
-  if (t > 21) return settle(h);
-  if (t === 21) return bjStand(st);
-  return null;
-}
-export function bjDouble(st) {
-  const h = st.hand;
-  h.bet *= 2;
-  h.p.push(draw(st));
-  if (handVal(h.p) > 21) return settle(h);
-  return bjStand(st);
+  const x = cur(st.hand);
+  x.cards.push(draw(st));
+  return { charge: 0, done: advance(st) };
 }
 export function bjStand(st) {
+  cur(st.hand).done = true;
+  return { charge: 0, done: advance(st) };
+}
+export function bjDouble(st) {
+  const x = cur(st.hand);
+  const charge = x.bet;
+  x.bet *= 2; x.doubled = true;
+  x.cards.push(draw(st));
+  x.done = true;
+  return { charge, done: advance(st) };
+}
+export function bjSplit(st) {
+  const h = st.hand, x = cur(h);
+  const [a, b] = x.cards;
+  const aces = rankOf(a) === 'A' && rankOf(b) === 'A';
+  x.cards = [a, draw(st)];
+  const twin = { cards: [b, draw(st)], bet: x.bet, done: false };
+  if (aces) { x.splitAces = twin.splitAces = true; x.done = twin.done = true; }
+  h.hands.splice(h.active + 1, 0, twin);
+  h.split = true;
+  return { charge: x.bet, done: advance(st) };
+}
+
+// Skip finished hands (21 or bust ends a hand by itself); when none are left the dealer plays and the round settles.
+function advance(st) {
   const h = st.hand;
-  while (handVal(h.d) < 17) h.d.push(draw(st));
-  return settle(h);
+  for (;;) {
+    const x = cur(h);
+    if (!x.done && handVal(x.cards) < 21) return null;
+    x.done = true;
+    if (h.active >= h.hands.length - 1) return finish(st);
+    h.active++;
+  }
 }
-function settle(h) {
-  const pv = handVal(h.p), dv = handVal(h.d), pB = isBJ(h.p), dB = isBJ(h.d);
-  let back = 0, code;
-  if (pv > 21) code = 'bust';
-  else if (pB && dB) { back = h.bet; code = 'push_bj'; }
-  else if (pB) { back = Math.floor(h.bet * 2.5); code = 'bj'; }
-  else if (dB) code = 'dealer_bj';
-  else if (dv > 21) { back = h.bet * 2; code = 'dealer_bust'; }
-  else if (pv > dv) { back = h.bet * 2; code = 'win'; }
-  else if (pv === dv) { back = h.bet; code = 'push'; }
-  else code = 'lose';
+function finish(st) {
+  const h = st.hand;
+  const dB = isBJ(h.d);
+  const natural = !h.split && isBJ(h.hands[0].cards);
+  const anyLive = h.hands.some(x => handVal(x.cards) <= 21);
+  if (!dB && !natural && anyLive) while (handVal(h.d) < 17) h.d.push(draw(st));
+  const dv = handVal(h.d);
+  let back = 0, bet = 0;
+  for (const x of h.hands) {
+    const pv = handVal(x.cards), pB = !h.split && isBJ(x.cards);
+    let code, b = 0;
+    if (pv > 21) code = 'bust';
+    else if (pB && dB) { b = x.bet; code = 'push_bj'; }
+    else if (pB) { b = Math.floor(x.bet * 2.5); code = 'bj'; }
+    else if (dB) code = 'dealer_bj';
+    else if (dv > 21) { b = x.bet * 2; code = 'dealer_bust'; }
+    else if (pv > dv) { b = x.bet * 2; code = 'win'; }
+    else if (pv === dv) { b = x.bet; code = 'push'; }
+    else code = 'lose';
+    x.result = { code, back: b };
+    x.done = true;
+    back += b; bet += x.bet;
+  }
   h.phase = 'done';
-  h.result = { code, back };
-  return { back, detail: (pB ? 'BJ' : pv) + ' : ' + (dB ? 'BJ' : dv) };
+  h.result = { back, bet };
+  const mine = h.hands.map(x => (!h.split && isBJ(x.cards) ? 'BJ' : handVal(x.cards))).join(', ');
+  return { back, bet, detail: mine + ' : ' + (dB ? 'BJ' : dv) };
 }
-/** What the player may see: the hole card stays hidden (null) while the hand is live. */
-export function bjPublic(h) {
+
+/** What the player may see: the hole card stays hidden (null) while the round is live. */
+export function bjPublic(raw) {
+  const h = bjNormalize(raw);
   if (!h) return null;
+  const live = h.phase === 'play';
   return {
     phase: h.phase,
-    bet: h.bet,
-    p: h.p,
-    d: h.phase === 'play' ? [h.d[0], null] : h.d,
+    d: live ? [h.d[0], null] : h.d,
+    hands: h.hands.map(x => ({ cards: x.cards, bet: x.bet, doubled: !!x.doubled, done: !!x.done, result: x.result || null })),
+    active: h.active,
+    split: !!h.split,
+    canDouble: canDouble(h),
+    canSplit: canSplit(h),
     result: h.result || null,
   };
 }
