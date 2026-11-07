@@ -173,6 +173,34 @@ export function createApp({ sql, allowedOrigins = [] }) {
       };
     },
 
+    // Profile for the personal cabinet: name, join date, place by balance, per-game breakdown.
+    'GET /account': async (req, id) => {
+      const [u] = await sql`select username, balance, created_at from players where id = ${id}`;
+      const games = await sql`
+        select game, count(*) as rounds, coalesce(sum(bet), 0) as wagered, coalesce(sum(win), 0) as paid,
+               count(*) filter (where win > bet) as wins, coalesce(max(win - bet), 0) as best
+        from bets where player_id = ${id} group by game`;
+      const [{ place }] = await sql`select count(*) + 1 as place from players where balance > ${n(u.balance)}`;
+      const [{ total }] = await sql`select count(*) as total from players`;
+      const byGame = {};
+      for (const g of games) {
+        byGame[g.game] = { rounds: n(g.rounds), wagered: n(g.wagered), paid: n(g.paid), wins: n(g.wins), best: Math.max(0, n(g.best)) };
+      }
+      return { name: u.username, createdAt: new Date(u.created_at).toISOString(), place: n(place), players: n(total), games: byGame };
+    },
+
+    // The name shown in the header and the leaderboard; it is also the login name.
+    'POST /account/rename': async (req, id, body) => {
+      const username = String(body.username || '').trim();
+      if (!USERNAME_RE.test(username)) throw bad('Имя: от 3 до 24 символов — буквы, цифры, точка, дефис или подчёркивание.');
+      const key = nameKey(username);
+      const [taken] = await sql`select 1 from players where name_key = ${key} and id <> ${id}`;
+      if (taken) throw new HttpError(409, 'Это имя уже занято. Выберите другое.');
+      try { await sql`update players set username = ${username}, name_key = ${key} where id = ${id}`; }
+      catch { throw new HttpError(409, 'Это имя уже занято. Выберите другое.'); }
+      return { name: username };
+    },
+
     'POST /auth/register': async (req, _id, body) => {
       if (await tooManyAttempts(req)) throw new HttpError(429, 'Слишком много попыток. Подождите 10 минут.');
       const username = String(body.username || '').trim();
